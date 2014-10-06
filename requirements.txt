@@ -1,0 +1,17 @@
+_markerlib
+beautifulsoup4-4.3.2-py2.7.egg-info
+bs4
+easy_install.py
+easy_install.pyc
+lxml
+lxml-3.4.0-py2.7.egg-info
+pip
+pip-1.4.1-py2.7.egg-info
+pkg_resources.py
+pkg_resources.pyc
+requests
+requests-2.4.1-py2.7.egg-info
+selenium
+selenium-2.43.0-py2.7.egg-info
+setuptools
+setuptools-0.9.8-py2.7.egg-info
