@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup as BSoup
 
 from boije import BOIJE_SITE_INDEX_URL, DESTINATION_DIRECTORY,\
 BOIJE_DIRECTORY_NAME, getOrCreateBoijeFolder, getOrCreateComposerFolder,\
-boijeLink, getIndexSoup
+boijeLink, getIndexSoup, convertIndexToDictionary
 
 
 class BoijeSiteRetrievalTests(unittest.TestCase):
@@ -41,7 +41,18 @@ class BoijeLetterIndexTests(unittest.TestCase):
         self.assertIn(unicode('<title>Boijes samling C</title>'), '%s'%soup.title)
 
     def testConvertRowEntiresToDictionary(self):
-        self.fail("FINISH THIS TEST")
+        #checks to see if an index can be made into a dict
+        #where dict = {'artist':[score1, score2, score3, score4]}
+        index_to_check = 'c'
+        link_to_check = boijeLink(index_to_check)
+        soup = getIndexSoup(link_to_check)
+
+        dictionary_of_values = convertIndexToDictionary(soup)
+
+        self.assertEqual(len(dictionary_of_values['Calegari_F']), 2)
+        self.assertIn('Carcassi_M', dictionary_of_values)
+        self.assertIn('anon', dictionary_of_values)
+        self.assertIn('Coste_N', dictionary_of_values) 		
 
 class DirectoryTests(unittest.TestCase):
 
@@ -51,9 +62,9 @@ class DirectoryTests(unittest.TestCase):
 
 
     def testComposerDirectoryCreated(self):
-        self.created_path = getOrCreateComposerFolder(self.path, self.composer)
         should_be_equal_to = os.path.join(self.path, self.composer)
 
+        self.created_path = getOrCreateComposerFolder(self.path, self.composer)
         created_path_exists = os.path.exists(self.created_path)
 
         self.assertTrue(created_path_exists)

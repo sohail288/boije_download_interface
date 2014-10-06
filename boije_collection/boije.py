@@ -32,6 +32,30 @@ def getIndexSoup(boijelink):
     soup = BSoup(r.content)
     return soup
 
+def convertIndexToDictionary(soup):
+    dictionary_of_composers_and_their_pieces = {}
+    table = soup.table
+    rows = table.find_all('tr')
+    for row in rows:
+        list_of_row_components = []
+        for column in row.find_all('td'):
+            list_of_row_components.append(column.contents[0])
+        #composer is the first element, followed by piece/html of file, last is boije_number
+        composer = list_of_row_components[0]
+        #manipulate composer by stripping off all parts
+        #first check to see if composer field is blank
+        composer = composer.translate(dict((ord(char), None) for char in ',.'))
+        composer = composer.split()
+        composer = '_'.join(composer)
+        if not composer.strip():
+            composer = 'anon'
+        #next we have this composers scores
+        if dictionary_of_composers_and_their_pieces.get(composer):
+            dictionary_of_composers_and_their_pieces[composer] += list_of_row_components[1]
+        else:
+            dictionary_of_composers_and_their_pieces[composer] = []
+            dictionary_of_composers_and_their_pieces[composer] += list_of_row_components[1]
+    return dictionary_of_composers_and_their_pieces
 
 def main():
     boije_folder = getOrCreateBoijeFolder(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
