@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, sys, time, json
+import os, sys, time, json, copy
 import requests
 import unicodedata
 import string
@@ -11,10 +11,21 @@ from bs4 import BeautifulSoup as BSoup
 BOIJE_SITE_INDEX_URL = 'http://biblioteket.statensmusikverk.se/ebibliotek/boije/indexeng.htm'
 DESTINATION_DIRECTORY = '/Users/Sohail/Desktop/sheet_music/'
 BOIJE_DIRECTORY_NAME = 'boije_collection'
-
+JSON_FILE_NAME = 'boije_collection.json'
+BOIJE_DIRECTORY = os.path.join(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
 
 def boijeLink(letter):
-    return "http://biblioteket.statensmusikverk.se/ebibliotek/boije/Boije_%c.htm"%(letter)
+    if len(letter) == 1:
+        return "http://biblioteket.statensmusikverk.se/ebibliotek/boije/Boije_%c.htm"%(letter)
+    return "http://biblioteket.statensmusikverk.se/ebibliotek/boije/%s"%(letter)
+
+def getBoijeLetterIndices():
+    r = requests.get(BOIJE_SITE_INDEX_URL)
+    soup = BSoup(r.content)
+    #index links start after the first three html links on page
+    index_links_tags = soup.find_all('a')[3:]
+    index_links = [i.get('href') for i in index_links_tags]
+    return index_links
 
 def getOrCreateComposerFolder(boije_folder, composer):
     path_to_create = os.path.join(boije_folder, composer)
@@ -35,6 +46,10 @@ def saveScorePDF(downloaded_score, score_name, composer_folder):
         f.write(content)
     return (True, file_path)
 
+def getScorePath(composer, score_name):
+    composer_folder_path = os.path.join(BOIJE_DIRECTORY, composer)    
+    return os.path.exists(os.join(composer_folder_path, score_name))
+
 def downloadAndSaveScore(boije_folder, composer, score, score_attributes):
     composer_folder = getOrCreateComposerFolder(boije_folder, composer)
     html = score_attributes[0]
@@ -44,6 +59,8 @@ def downloadAndSaveScore(boije_folder, composer, score, score_attributes):
             raise Exception
         r = getScorePDF(html)
         saveScorePDF(r, score, composer_folder)
+        return True
+    except Exception:
         return True
     except:
         return False
@@ -112,6 +129,14 @@ def convertScoreName(score_name):
         score_name_to_return = score_name_to_return[1:]
     return score_name_to_return
 
+def consolidateIndicesToDictionary(html_list):
+    dictionary_of_composers_and_their_pieces = {}
+    for htm in html_list:
+        link_to_check = boijeLink(htm)
+        soup = getIndexSoup(link_to_check)
+        index_dict = convertIndexToDictionary(soup)
+        dictionary_of_composers_and_their_pieces.update(index_dict)
+    return dictionary_of_composers_and_their_pieces
 
 def convertIndexToDictionary(soup):
     #final dictionary will be {composer:{score1:(html, boije_number, downloaded) 
@@ -125,10 +150,29 @@ def convertIndexToDictionary(soup):
         #composer is the first element, followed by piece/html of file, last is boije_number
         #BeautifulSoup text is unicode, my other function can't decode unicode, so let's encode it here.
         composer = convertComposerName(list_of_row_components[0])
-        score = convertScoreName(list_of_row_components[1].text.encode('utf-8'))
-        score_html = list_of_row_components[1].get('href')
-        #boije number appears "Boije X", so all you have to do is split it and get the last element
-        boije_number = list_of_row_components[2].split()[-1]
+        try:
+            score = list_of_row_components[1]
+            score = score.text.encode('utf-8')
+            score = convertScoreName(score)
+            score_html = list_of_row_components[1].get('href')
+            #boije number appears "Boije X", so all you have to do is split it and get the last element
+            boije_number = list_of_row_components[2].split()[-1]
+        except AttributeError:
+            print 'unexpected error', sys.exc_info()[0]
+            print 'last score was'
+            print score
+            #I only know of one piece that fails
+            #Now two, fow some reason....
+            score = list_of_row_components[0]
+            score = score.text.encode('utf-8')
+            score = convertScoreName(score)
+            score_html = list_of_row_components[0].get('href')
+            composer = 'anon'
+            boije_number = list_of_row_components[1].split()[-1]
+        except:
+            print 'unexpected error', sys.exc_info()[0]
+            print list_of_row_components
+            break
         #I'm assuming this function will run to initialize the data, so nothing should be downloaded
         downloaded = False
         #sometimes a composers name is mispelled.  I don't have time to figure out how to remove duplicates
@@ -139,6 +183,7 @@ def convertIndexToDictionary(soup):
         score_dict = {score: [score_html, boije_number, downloaded]}
         dictionary_of_composers_and_their_pieces[composer].update(score_dict)
     return dictionary_of_composers_and_their_pieces
+
 
 def convertIndexToJson(index_dictionary, json_file_path):
     if not os.path.exists(json_file_path) or os.path.getsize(json_file_path) > 0:
@@ -159,5 +204,54 @@ def updateJsonFile(index_dictionary, json_file_path):
         json.dump(index_dictionary, fp, sort_keys = True, indent = 4)
     return 1
 
+def boijeCollectionInit():
+    boije_directory = getOrCreateBoijeFolder(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+    json_file = createJsonFile(JSON_FILE_NAME, boije_directory)
+    if not json_file:
+        json_file = os.path.join(boije_directory, JSON_FILE_NAME)
+    return boije_directory, json_file
+
+def dictionaryInit(json_file_path):
+    if os.path.exists(json_file_path) and os.path.getsize(json_file_path) > 0:
+        dictionary_of_composers = convertJsonToDict(json_file_path)
+        return dictionary_of_composers
+        
+    indices = getBoijeLetterIndices()
+    dictionary_of_composers = consolidateIndicesToDictionary(indices)
+    return dictionary_of_composers
+
+def scoreDownloader(score_dict, boije_directory, json_file_path):
+    copy_score_dict = copy.deepcopy(score_dict)
+    json_update_period = 5 
+    counter = 0
+    ##nested dictionary
+    for composer in copy_score_dict:
+        current_composer = composer
+        for score in copy_score_dict[composer]:
+            current_score = score
+            current_score_attributes = copy_score_dict[composer][score]
+            #test to see if the score has already been downloaded
+            downloaded = downloadAndSaveScore(boije_directory, composer, current_score, current_score_attributes)
+            copy_score_dict[composer][score][2] = downloaded
+            
+            #lets save json file after every score_downloaded, highly inefficient, but should work for now
+            counter += 1
+            if counter%5 == 0:
+                updateJsonFile(copy_score_dict, json_file_path)
+
+    return copy_score_dict
+
 def main():
-    boije_folder = getOrCreateBoijeFolder(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+    print "*******STARTING BOIJE COLLECTION COLLECTOR***************"
+
+    boije_directory, json_file_path = boijeCollectionInit()
+    print "initializing dictionary"
+    scores_dictionary = dictionaryInit(json_file_path)
+
+    scoreDownloader(scores_dictionary, boije_directory, json_file_path)
+
+
+if __name__ == "__main__":
+    main()
+
+    

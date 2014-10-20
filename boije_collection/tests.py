@@ -5,11 +5,13 @@ import  unittest
 import requests
 from bs4 import BeautifulSoup as BSoup
 
-from boije import BOIJE_SITE_INDEX_URL, DESTINATION_DIRECTORY,\
+from boije import BOIJE_SITE_INDEX_URL, DESTINATION_DIRECTORY, JSON_FILE_NAME,\
 BOIJE_DIRECTORY_NAME, getOrCreateBoijeFolder, getOrCreateComposerFolder,\
 boijeLink, getIndexSoup, convertIndexToDictionary, convertComposerName,\
 convertScoreName, getScorePDF, saveScorePDF, createJsonFile, convertIndexToJson,\
-convertJsonToDict, downloadAndSaveScore, updateJsonFile
+convertJsonToDict, downloadAndSaveScore, updateJsonFile, getBoijeLetterIndices,\
+consolidateIndicesToDictionary, boijeCollectionInit, dictionaryInit, scoreDownloader,\
+getScorePath
 
 class DirectorySetupAndRemovalMixin(object):
     #To be used only after all of these functions have been tested
@@ -42,6 +44,14 @@ class BoijeSiteRetrievalTests(unittest.TestCase):
         self.assertEqual('http://biblioteket.statensmusikverk.se/ebibliotek/boije/Boije_c.htm', url_to_check)
         self.assertEqual(status_code, 200)
 
+    def testGetAllLetterIndexes(self):
+        c_index = 'Boije_c.htm'
+        ae_index = 'Boije_ae.htm'
+        
+        list_of_letter_indexes = getBoijeLetterIndices()
+
+        self.assertIn(c_index, list_of_letter_indexes)
+        self.assertIn(ae_index, list_of_letter_indexes)
 
 class ScoreRetrieveAndStoreTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
 
@@ -144,6 +154,20 @@ class BoijeLetterIndexTests(unittest.TestCase):
         self.assertEqual(False, carcassi.get('Op_1_3_Sonates')[2])
         
     
+    def testConvertEveryIndexToASuperBigDictionary(self):
+        indices = getBoijeLetterIndices()
+        composer_1, score_1 = 'Carcassi_M', 'Op_3_Douze_petites_pieces_Pour_Guitare_ou_Lyre'
+        composer_2, score_2 = 'Knjze_FM', 'Op_16_Ober_Oesterreicher'
+        composer_3, score_3 = 'Zurfluh_A', 'Romance_sans_paroles'
+
+        dictionary_of_every_composer = consolidateIndicesToDictionary(indices)
+        
+        self.assertIn(composer_1, dictionary_of_every_composer)
+        self.assertIn(composer_2, dictionary_of_every_composer)
+        self.assertIn(composer_3, dictionary_of_every_composer)
+        self.assertIn(score_1, dictionary_of_every_composer.get(composer_1))
+        self.assertIn(score_2, dictionary_of_every_composer.get(composer_2))
+        self.assertIn(score_3, dictionary_of_every_composer.get(composer_3)) 
 
 #Okay I need a separate test to test whether a json file exists already
 
@@ -193,7 +217,7 @@ class CreateReadIndexTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         self.assertEqual(file_path, json_file_created)
         
 
-    def testJsonFileExists_soCreateShouldFail(self):
+    def testJsonFileExistsSoCreateShouldFail(self):
         json_file_name = 'boije_collection_test.json'
         create_boije_directory = getOrCreateBoijeFolder(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
         create_json_file = createJsonFile(json_file_name, create_boije_directory)
@@ -301,12 +325,102 @@ class JSONFileTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
 
         download_file = downloadAndSaveScore(create_boije_directory, composer, score,  score_attributes)
 
-        self.assertFalse(download_file)
+        self.assertTrue(download_file)
 
+class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
+
+    def testInitSequenceCreatesJsonFile(self):
+        json_file_path =  os.path.join(self.directory_path, JSON_FILE_NAME)
+        boije_directory = self.directory_path
+    
+        returned_boije_directory, returned_json_file_path = boijeCollectionInit()
+        
+        self.assertEqual(json_file_path, returned_json_file_path)
+        self.assertEqual(boije_directory, returned_boije_directory)
+
+    def testDictionaryInitSequence(self):
+        indices = getBoijeLetterIndices()
+        dictionary_should_be = consolidateIndicesToDictionary(indices)
+        boije_directory, json_file_path = boijeCollectionInit()        
+
+        returned_dictionary = dictionaryInit(json_file_path)
+
+        self.assertEqual(returned_dictionary, dictionary_should_be)
+
+    def testDictionaryLoadsFromJson(self):
+        index_to_check = 'c'
+        boije_directory, json_file_path = boijeCollectionInit()
+        link_to_check = boijeLink(index_to_check)
+        convert_index_to_dictionary = convertIndexToDictionary(getIndexSoup(link_to_check))
+        write_to_json_file = updateJsonFile(convert_index_to_dictionary, json_file_path)
+
+        returned_dictionary = dictionaryInit(json_file_path)
+
+        self.assertEqual(convert_index_to_dictionary, returned_dictionary) 
+
+    def testDictionaryDoesNotLoadFromEmptyJson(self):
+        indices = getBoijeLetterIndices()
+        dictionary_should_be = consolidateIndicesToDictionary(indices)
+        boije_directory, json_file_path = boijeCollectionInit()
+
+        returned_dictionary = dictionaryInit(json_file_path)
+
+        self.assertEqual(returned_dictionary, dictionary_should_be)
+
+    def testScoreDownloader(self):
+        index_to_check = 'c'
+        boije_directory, json_file_path = boijeCollectionInit()
+        link_to_check = boijeLink(index_to_check)
+        convert_index_to_dictionary = convertIndexToDictionary(getIndexSoup(link_to_check))
+        copy_of_dict = copy.deepcopy(convert_index_to_dictionary)
+        ##lets check some composers
+        composer_1 = 'Carcassi_M'
+        composer_2 = 'anon'
+        composer_3 = 'Cottin_A'
+        carcassi_score_1 = convertScoreName('Op. 1. 3 Sonates.')
+        carcassi_score_2 = convertScoreName('Op. 15. Tra la la. Air Varié …')
+        carcassi_score_3 = convertScoreName('Op. 2. Trois Rondo Pour Guitare ou Lyre ...')
+        anon_score_1 = convertScoreName('CHITARRISTA Moderna Pezzi Favoriti ...')
+        anon_score_2 = convertScoreName('CIEBRA’s Hand-book for the Guitar ...')
+        cottin_score_1 = convertScoreName('Ballade circassienne ...')
+        cottin_score_2 = convertScoreName('Habanera.')
+        #####  check paths, let's just make functions that check for paths
+        path_to_carcassi_folder = os.path.join(self.directory_path, composer_1)
+        path_to_anon_folder = os.path.join(self.directory_path, composer_2)
+        path_to_cottin_folder = os.path.join(self.directory_path, composer_3) 
+
+        returned_dictionary = scoreDownloader(copy_of_dict, boije_directory)
+
+        #throughout the download process, the dictionary returned by downloaded should be different
+        #There should be some truth values
+        self.assertNotEqual(convert_index_to_dictionary, returned_dictionary)
+        self.assertTrue(returned_dictionary.get(composer_1).get(carcassi_score_1)[2])
+        self.assertTrue(returned_dictionary.get(composer_2).get(anon_score_1)[2])
+        ##
+        ## Now the file paths should exist.
+        carcassi_score_1_exists = getScorePath(composer_1, carcassi_score_1)
+        carcassi_score_2_exists = getScorePath(composer_1, carcassi_score_2)
+        carcassi_score_3_exists = getScorePath(composer_1, carcassi_score_3)
+        anon_score_1_exists = getScorePath(composer_2, anon_score_1)
+        anon_score_2_exists = getScorePath(composer_2, anon_score_2)
+        cottin_score_1_exists = getScorePath(composer_3, cottin_score_1)
+        cottin_score_2_exists = getScorePath(composer_3, cottin_score_2)
+        
+        self.assertTrue(carcassi_score_1_exists)
+        self.assertTrue(carcassi_score_2_exists)
+        self.assertTrue(carcassi_score_3_exists)
+        self.assertTrue(anon_score_1_exists)
+        self.assertTrue(anon_score_2_exists)
+        self.assertTrue(cottin_score_1_exists)
+        self.assertTrue(cottin_score_2_exists)
+
+
+    
 if __name__ == '__main__':
-    test_classes_to_run = [BoijeSiteRetrievalTests, DirectoryTests, BoijeLetterIndexTests,
+    test_classes_to_run = [BoijeSiteRetrievalTests, DirectoryTests, BoijeLetterIndexTests, InitSequenceTests,
                             ScoreRetrieveAndStoreTests, 
                             CreateReadIndexTests, JSONFileTests]
+    test_classes_to_run = test_classes_to_run[:-2]
     loader = unittest.TestLoader()
 
     suites_list = []
