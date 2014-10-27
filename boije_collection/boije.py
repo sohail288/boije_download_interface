@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, sys, time, json, copy
+import os, sys, time, json, copy, logging
 import requests
 import unicodedata
 import string
@@ -46,22 +46,27 @@ def saveScorePDF(downloaded_score, score_name, composer_folder):
         f.write(content)
     return (True, file_path)
 
-def getScorePath(composer, score_name):
-    composer_folder_path = os.path.join(BOIJE_DIRECTORY, composer)    
-    return os.path.exists(os.join(composer_folder_path, score_name))
+def getScorePath(composer, score_name, boije_directory=BOIJE_DIRECTORY):
+    composer_folder_path = os.path.join(boije_directory, composer)    
+    score_name = '%s.pdf'%score_name
+    return os.path.exists(os.path.join(composer_folder_path, score_name))
 
 def downloadAndSaveScore(boije_folder, composer, score, score_attributes):
     composer_folder = getOrCreateComposerFolder(boije_folder, composer)
     html = score_attributes[0]
     try:
         #json file indicates that this already exists
-        if score_attributes[2]:
+        if score_attributes[2] or getScorePath(composer, score, boije_folder):
             raise Exception
+        print "downloading %s"%score
         r = getScorePDF(html)
         saveScorePDF(r, score, composer_folder)
         return True
+    except KeyboardInterrupt:
+        logging.exception('User Interupted Downloading Sequence')
+        raise        
     except Exception:
-        return True
+        return True 
     except:
         return False
 
@@ -158,9 +163,7 @@ def convertIndexToDictionary(soup):
             #boije number appears "Boije X", so all you have to do is split it and get the last element
             boije_number = list_of_row_components[2].split()[-1]
         except AttributeError:
-            print 'unexpected error', sys.exc_info()[0]
-            print 'last score was'
-            print score
+            logging.error('error:%s'%(sys.exc_info()[0]))
             #I only know of one piece that fails
             #Now two, fow some reason....
             score = list_of_row_components[0]
@@ -170,8 +173,8 @@ def convertIndexToDictionary(soup):
             composer = 'anon'
             boije_number = list_of_row_components[1].split()[-1]
         except:
-            print 'unexpected error', sys.exc_info()[0]
-            print list_of_row_components
+            list_str_rep = ','.join([unicode(i) for i in list_of_row_components])
+            logging.error('error:%s'%(sys.exc_info()[0]))
             break
         #I'm assuming this function will run to initialize the data, so nothing should be downloaded
         downloaded = False
@@ -204,8 +207,8 @@ def updateJsonFile(index_dictionary, json_file_path):
         json.dump(index_dictionary, fp, sort_keys = True, indent = 4)
     return 1
 
-def boijeCollectionInit():
-    boije_directory = getOrCreateBoijeFolder(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+def boijeCollectionInit(destination_directory, boije_directory_name):
+    boije_directory = getOrCreateBoijeFolder(destination_directory, boije_directory_name)
     json_file = createJsonFile(JSON_FILE_NAME, boije_directory)
     if not json_file:
         json_file = os.path.join(boije_directory, JSON_FILE_NAME)
@@ -213,8 +216,11 @@ def boijeCollectionInit():
 
 def dictionaryInit(json_file_path):
     if os.path.exists(json_file_path) and os.path.getsize(json_file_path) > 0:
-        dictionary_of_composers = convertJsonToDict(json_file_path)
-        return dictionary_of_composers
+        try:
+            dictionary_of_composers = convertJsonToDict(json_file_path)
+            return dictionary_of_composers
+        except ValueError:
+            pass
         
     indices = getBoijeLetterIndices()
     dictionary_of_composers = consolidateIndicesToDictionary(indices)
@@ -228,23 +234,42 @@ def scoreDownloader(score_dict, boije_directory, json_file_path):
     for composer in copy_score_dict:
         current_composer = composer
         for score in copy_score_dict[composer]:
+            print "checking %s"%score
             current_score = score
             current_score_attributes = copy_score_dict[composer][score]
             #test to see if the score has already been downloaded
-            downloaded = downloadAndSaveScore(boije_directory, composer, current_score, current_score_attributes)
+            try:
+                downloaded = downloadAndSaveScore(boije_directory, composer, current_score, current_score_attributes)
+            except KeyboardInterrupt:
+                updateJsonFile(copy_score_dict, json_file_path)
             copy_score_dict[composer][score][2] = downloaded
             
-            #lets save json file after every score_downloaded, highly inefficient, but should work for now
+            #lets save json file after every  5 score_downloaded, highly inefficient, but should work for now
             counter += 1
             if counter%5 == 0:
                 updateJsonFile(copy_score_dict, json_file_path)
-
+    updateJsonFile(copy_score_dict, json_file_path)
+    logging.info('%d scores have been downloaded'%(counter))    
     return copy_score_dict
+
+def loggingInit(boije_directory):
+    logging_file_name = 'boije_collection.log'
+    logging_file = os.path.join(boije_directory, logging_file_name)
+    logging_level = logging.DEBUG
+    logging.basicConfig(filename=logging_file, 
+                        level = logging_level,
+                        format = "%(asctime)s:%(levelname)s:\t%(message)s",
+                        datefmt = "%m/%d/%Y %H:%M %p",
+                    )
+    return (logging_file_name, logging_file)
 
 def main():
     print "*******STARTING BOIJE COLLECTION COLLECTOR***************"
 
-    boije_directory, json_file_path = boijeCollectionInit()
+    boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+    print "setting logging file"
+    logging_file_name, logging_file = loggingInit(boije_directory)
+    logging.info('Started Boije Project')
     print "initializing dictionary"
     scores_dictionary = dictionaryInit(json_file_path)
 

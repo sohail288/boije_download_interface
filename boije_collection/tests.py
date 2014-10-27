@@ -11,7 +11,12 @@ boijeLink, getIndexSoup, convertIndexToDictionary, convertComposerName,\
 convertScoreName, getScorePDF, saveScorePDF, createJsonFile, convertIndexToJson,\
 convertJsonToDict, downloadAndSaveScore, updateJsonFile, getBoijeLetterIndices,\
 consolidateIndicesToDictionary, boijeCollectionInit, dictionaryInit, scoreDownloader,\
-getScorePath
+getScorePath, loggingInit
+
+##So we don't overwrite a users hard downloaded files
+DESTINATION_DIRECTORY = './'
+BOIJE_DIRECTORY_NAME = 'boije_test_directory'
+
 
 class DirectorySetupAndRemovalMixin(object):
     #To be used only after all of these functions have been tested
@@ -60,6 +65,7 @@ class ScoreRetrieveAndStoreTests(DirectorySetupAndRemovalMixin, unittest.TestCas
         self.score_name = 'Op_22_Trois_Sonates'
         self.composer = 'Carcassi_M'
         self.html = "pdf/Boije%2074.pdf"
+        self.not_real_score = 'not_a_real_score'
 
     def testRetrieveScore(self):
         full_url = 'http://biblioteket.statensmusikverk.se/ebibliotek/boije/%s'%self.html
@@ -86,8 +92,14 @@ class ScoreRetrieveAndStoreTests(DirectorySetupAndRemovalMixin, unittest.TestCas
 
         self.assertTrue(truth_of_score)
         self.assertEqual(path_of_score, path_to_score_should_be)
+        
+        time.sleep(10)
+        ##now we can test the getScorePath function, this function should return true
+        returned_truth_of_get_score_path = getScorePath(self.composer, self.score_name, create_boije_folder)
+        self.assertTrue(returned_truth_of_get_score_path)
 
-
+        returned_false_of_get_score_path = getScorePath(self.composer, self.not_real_score, create_boije_folder)
+        self.assertFalse(returned_false_of_get_score_path)
 
 class BoijeLetterIndexTests(unittest.TestCase):
 
@@ -333,7 +345,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         json_file_path =  os.path.join(self.directory_path, JSON_FILE_NAME)
         boije_directory = self.directory_path
     
-        returned_boije_directory, returned_json_file_path = boijeCollectionInit()
+        returned_boije_directory, returned_json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
         
         self.assertEqual(json_file_path, returned_json_file_path)
         self.assertEqual(boije_directory, returned_boije_directory)
@@ -341,7 +353,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
     def testDictionaryInitSequence(self):
         indices = getBoijeLetterIndices()
         dictionary_should_be = consolidateIndicesToDictionary(indices)
-        boije_directory, json_file_path = boijeCollectionInit()        
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)        
 
         returned_dictionary = dictionaryInit(json_file_path)
 
@@ -349,7 +361,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
 
     def testDictionaryLoadsFromJson(self):
         index_to_check = 'c'
-        boije_directory, json_file_path = boijeCollectionInit()
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
         link_to_check = boijeLink(index_to_check)
         convert_index_to_dictionary = convertIndexToDictionary(getIndexSoup(link_to_check))
         write_to_json_file = updateJsonFile(convert_index_to_dictionary, json_file_path)
@@ -361,7 +373,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
     def testDictionaryDoesNotLoadFromEmptyJson(self):
         indices = getBoijeLetterIndices()
         dictionary_should_be = consolidateIndicesToDictionary(indices)
-        boije_directory, json_file_path = boijeCollectionInit()
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
 
         returned_dictionary = dictionaryInit(json_file_path)
 
@@ -369,7 +381,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
 
     def testScoreDownloader(self):
         index_to_check = 'c'
-        boije_directory, json_file_path = boijeCollectionInit()
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
         link_to_check = boijeLink(index_to_check)
         convert_index_to_dictionary = convertIndexToDictionary(getIndexSoup(link_to_check))
         copy_of_dict = copy.deepcopy(convert_index_to_dictionary)
@@ -389,7 +401,7 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         path_to_anon_folder = os.path.join(self.directory_path, composer_2)
         path_to_cottin_folder = os.path.join(self.directory_path, composer_3) 
 
-        returned_dictionary = scoreDownloader(copy_of_dict, boije_directory)
+        returned_dictionary = scoreDownloader(copy_of_dict, boije_directory, json_file_path)
 
         #throughout the download process, the dictionary returned by downloaded should be different
         #There should be some truth values
@@ -398,13 +410,13 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         self.assertTrue(returned_dictionary.get(composer_2).get(anon_score_1)[2])
         ##
         ## Now the file paths should exist.
-        carcassi_score_1_exists = getScorePath(composer_1, carcassi_score_1)
-        carcassi_score_2_exists = getScorePath(composer_1, carcassi_score_2)
-        carcassi_score_3_exists = getScorePath(composer_1, carcassi_score_3)
-        anon_score_1_exists = getScorePath(composer_2, anon_score_1)
-        anon_score_2_exists = getScorePath(composer_2, anon_score_2)
-        cottin_score_1_exists = getScorePath(composer_3, cottin_score_1)
-        cottin_score_2_exists = getScorePath(composer_3, cottin_score_2)
+        carcassi_score_1_exists = getScorePath(composer_1, carcassi_score_1, boije_directory)
+        carcassi_score_2_exists = getScorePath(composer_1, carcassi_score_2, boije_directory)
+        carcassi_score_3_exists = getScorePath(composer_1, carcassi_score_3, boije_directory)
+        anon_score_1_exists = getScorePath(composer_2, anon_score_1, boije_directory)
+        anon_score_2_exists = getScorePath(composer_2, anon_score_2, boije_directory)
+        cottin_score_1_exists = getScorePath(composer_3, cottin_score_1, boije_directory)
+        cottin_score_2_exists = getScorePath(composer_3, cottin_score_2, boije_directory)
         
         self.assertTrue(carcassi_score_1_exists)
         self.assertTrue(carcassi_score_2_exists)
@@ -414,13 +426,28 @@ class InitSequenceTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         self.assertTrue(cottin_score_1_exists)
         self.assertTrue(cottin_score_2_exists)
 
+class LoggerTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
 
-    
+    def testLoggingFileCreated(self):
+        '''
+        Function that will create a logging file.  Test existence of logging file.
+        '''
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+
+        logging_file_name, path_to_logger = loggingInit(boije_directory)
+        logger_exists = os.path.exists(path_to_logger)
+        
+
+        self.assertTrue(logger_exists)
+        
+             
 if __name__ == '__main__':
-    test_classes_to_run = [BoijeSiteRetrievalTests, DirectoryTests, BoijeLetterIndexTests, InitSequenceTests,
+    test_classes_to_run = [BoijeSiteRetrievalTests, DirectoryTests, BoijeLetterIndexTests, 
                             ScoreRetrieveAndStoreTests, 
+                            LoggerTests,                        
+							InitSequenceTests,
                             CreateReadIndexTests, JSONFileTests]
-    test_classes_to_run = test_classes_to_run[:-2]
+    test_classes_to_run = test_classes_to_run
     loader = unittest.TestLoader()
 
     suites_list = []
