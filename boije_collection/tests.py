@@ -11,7 +11,8 @@ boijeLink, getIndexSoup, convertIndexToDictionary, convertComposerName,\
 convertScoreName, getScorePDF, saveScorePDF, createJsonFile, convertIndexToJson,\
 convertJsonToDict, downloadAndSaveScore, updateJsonFile, getBoijeLetterIndices,\
 consolidateIndicesToDictionary, boijeCollectionInit, dictionaryInit, scoreDownloader,\
-getScorePath, loggingInit
+getScorePath, loggingInit, getUserDesktop, renameBoijeFiles, getBoijeNumber,\
+getScoreNameWithBoijeNumber
 
 ##So we don't overwrite a users hard downloaded files
 DESTINATION_DIRECTORY = './'
@@ -93,7 +94,6 @@ class ScoreRetrieveAndStoreTests(DirectorySetupAndRemovalMixin, unittest.TestCas
         self.assertTrue(truth_of_score)
         self.assertEqual(path_of_score, path_to_score_should_be)
         
-        time.sleep(10)
         ##now we can test the getScorePath function, this function should return true
         returned_truth_of_get_score_path = getScorePath(self.composer, self.score_name, create_boije_folder)
         self.assertTrue(returned_truth_of_get_score_path)
@@ -190,6 +190,16 @@ class DirectoryTests(unittest.TestCase):
         self.path = os.path.join(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
         self.composer = 'carcassi'
 
+    def testFindUserDesktop(self):
+        '''
+        will find user desktop using function getUserDesktop()
+        all files will be saved to desktop/boije_collection
+        '''
+        path_should_contain = "Desktop"  
+
+        path_returned = getUserDesktop()
+
+        self.assertIn(path_should_contain, path_returned)
 
     def testComposerDirectoryCreated(self):
         should_be_equal_to = os.path.join(self.path, self.composer)
@@ -435,18 +445,106 @@ class LoggerTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
 
         logging_file_name, path_to_logger = loggingInit(boije_directory)
+        ##print logging_file_name, path_to_logger
         logger_exists = os.path.exists(path_to_logger)
         
 
         self.assertTrue(logger_exists)
+
+class RenamerUtilityTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
+
+    def setUp(self):
+        super(RenamerUtilityTests, self).setUp()
+        score_1_path = "./Boije 1.pdf"
+        score_2_path = "./Boije 2.pdf"
+        json_file_path = os.path.join(os.getcwd(), JSON_FILE_NAME)
+        if not os.path.exists(score_1_path):
+            # Download this score
+            score_1_url = "pdf/Boije%201.pdf"
+            score_1 = getScorePDF(score_1_url)
+            saveScorePDF(score_1, "Boije 1", ".")
+
+        if not os.path.exists("./Boije 2.pdf"):
+            #Download this score
+            score_2_url = "pdf/Boije%202.pdf"
+            score_2 = getScorePDF(score_2_url) 
+            saveScorePDF(score_2, "Boije 2", ".")
+        if (not os.path.exists(json_file_path) or 
+                not os.path.getsize(json_file_path)):
+            json_file_path = createJsonFile(JSON_FILE_NAME, os.getcwd())
+            dictionary_of_composers = dictionaryInit(json_file_path)
+            update_json_file = updateJsonFile(
+                dictionary_of_composers, json_file_path)
+
+        shutil.copy(score_1_path, self.directory_path)
+        shutil.copy(score_2_path, self.directory_path)
+        shutil.copy(json_file_path, self.directory_path)
+
+    def testGetScoreByBoijeNumber(self):
+        score_1 = "Boije 1.pdf"
+        score_2 = "Boije 2.pdf"
+        boije_directory, json_file_path = boijeCollectionInit(
+            DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+        scores_dictionary = dictionaryInit(json_file_path)
+
+        time.sleep(5) ##sleep
+        score_1_number = getBoijeNumber(score_1)
+        score_2_number = getBoijeNumber(score_2)
+    
+        # make sure a duplicate folder is not within the directory
+        self.assertFalse(os.path.exists(
+            "./boije_test_directory/boije_test_directory"))
+
+        self.assertEqual("1", score_1_number)
+        self.assertEqual("2", score_2_number)
+
+        composer_1, score_1_name = getScoreNameWithBoijeNumber(scores_dictionary, score_1_number)
+        composer_2, score_2_name = getScoreNameWithBoijeNumber(scores_dictionary, score_2_number)
+
+        self.assertEqual(composer_1, "Aguado_D")
+        self.assertEqual(score_1_name, "Op_1_Douze_valses")
+        self.assertEqual(composer_2, "Aguado_D")
+        self.assertEqual(score_2_name, "Op_2_Trois_rondos_brillants")
+
+    
+
+    def testRenameExistingFiles(self):
+        composer = "Aguado_D"
+        boije_directory, json_file_path = boijeCollectionInit(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+        score_1_name = "Op_1_Douze_valses"
+        score_2_name = "Op_2_Trois_rondos_brillants"
+
+        renameBoijeFiles(boije_directory, json_file_path)
+
+        score_1_renamed = os.path.exists(
+            os.path.join(boije_directory, "%s/%s.pdf"%(composer, score_1_name))
+            )
+        score_2_renamed = os.path.exists(
+            os.path.join(boije_directory, "%s/%s.pdf"%(composer, score_2_name))
+            )
+    
+        #os.rename
+        self.assertTrue(score_1_renamed)
+        self.assertTrue(score_2_renamed)
+
+        read_json_file_dict = convertJsonToDict(json_file_path)
+        self.assertTrue(read_json_file_dict.get(composer).get(score_1_name)[2])
+        self.assertTrue(read_json_file_dict.get(composer).get(score_1_name)[2])
         
+
              
 if __name__ == '__main__':
-    test_classes_to_run = [BoijeSiteRetrievalTests, DirectoryTests, BoijeLetterIndexTests, 
-                            ScoreRetrieveAndStoreTests, 
+    test_classes_to_run = [
+                           # BoijeSiteRetrievalTests, 
+                            DirectoryTests, 
+                            #BoijeLetterIndexTests, 
+                            #ScoreRetrieveAndStoreTests, 
                             LoggerTests,                        
-							InitSequenceTests,
-                            CreateReadIndexTests, JSONFileTests]
+                            ##InitSequenceTests,
+                            #CreateReadIndexTests, 
+                            #JSONFileTests,
+                            RenamerUtilityTests,
+                            ]
     test_classes_to_run = test_classes_to_run
     loader = unittest.TestLoader()
 
