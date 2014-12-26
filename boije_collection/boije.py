@@ -9,6 +9,7 @@ import logging
 import atexit
 import string
 import unicodedata
+import getopt
 
 import requests
 
@@ -21,6 +22,50 @@ DESTINATION_DIRECTORY = '/Users/Sohail/Desktop/sheet_music/'
 BOIJE_DIRECTORY_NAME = 'boije_collection'
 JSON_FILE_NAME = 'boije_collection.json'
 BOIJE_DIRECTORY = os.path.join(DESTINATION_DIRECTORY, BOIJE_DIRECTORY_NAME)
+
+def usage():
+    print '{:*^30}'.format("Boije Collection Downloading Interface")
+    print "Usage: boije.py [options]"
+    print "Options are:"
+    print "\t\t -r --rename\t [rename existing boije collection scores in boije directory]"
+    print "\t\t -d --download\t [download all files from boije collection database]"
+    print "\t\t -s 'directory_path'  -set-directory ='directory_path'"
+    print "\t\t -h --help\t [display this message]"
+    return 0
+
+def getCommandLineArgs(args):
+    """ Parse command line args.  Return dictionary of key values"""
+    args_dict = {
+            "rename" : False,
+            "download" : False,
+            "directory" : None,
+    }
+    try:
+        opts, args = getopt.getopt(args,"rds:h", ["rename", "download",
+                                                    "set-directory=", "help"])
+
+    except getopt.GetoptError as error:
+        print str(error)
+        usage()
+        sys.exit(2)
+    # parse opts, args to set dictionary values
+    for o, a in opts:
+        if o in ('-h', 'help'):
+            # rename
+            usage()
+            sys.exit(1)
+        elif o in ('-r', '--rename'):
+            args_dict['rename'] = True
+        elif o in ('-d', '--download'):
+            args_dict['download'] = True
+        elif o in ('-s', '--set-directory'):
+            args_dict['directory'] = a          
+        else:
+            print "command:\t%s not recognized" % o
+            usage()
+            
+    
+    return args_dict 
 
 def boijeLink(letter):
     """Process index character or string and return it."""
@@ -306,6 +351,7 @@ def scoreDownloader(score_dict, boije_directory, json_file_path):
                                                  )
             except KeyboardInterrupt:
                 updateJsonFile(copy_score_dict, json_file_path)
+                sys.exit(1)
             copy_score_dict[composer][score][2] = downloaded
             
             # lets save json file after every  5 score_downloaded, 
@@ -397,18 +443,35 @@ def renameBoijeFiles(boije_directory, json_file_path):
     updateJsonFile(scores_dictionary, json_file_path)
     # return to exit
 
+
+
 def main():
     print "*******STARTING BOIJE COLLECTION COLLECTOR***************"
-    destination_directory = getUserDesktop() 
+
+    args_dictionary = getCommandLineArgs(sys.argv[1:])
+    if args_dictionary.get('directory', 0):
+        destination_directory = args_dictionary['directory']
+    else:
+        destination_directory = getUserDesktop() 
+        #download scores
+    
+    
+    print destination_directory
     boije_directory, json_file_path = boijeCollectionInit(destination_directory,
                                                          BOIJE_DIRECTORY_NAME)
     print "setting logging file"
     logging_file_name, logging_file = loggingInit(boije_directory)
     logging.info('Started Boije Project')
     print "initializing dictionary"
-    scores_dictionary = dictionaryInit(json_file_path)
 
-    scoreDownloader(scores_dictionary, boije_directory, json_file_path)
+    if args_dictionary.get('rename', 0):
+        print "\t\tStarting Renamer Utility\t\t"
+        renameBoijeFiles(boije_directory, json_file_path)
+        
+    if args_dictionary.get('download', 0):
+        print "\t\t Starting Download Utility\t\t"
+        scores_dictionary = dictionaryInit(json_file_path)
+        scoreDownloader(scores_dictionary, boije_directory, json_file_path)
 
 
 if __name__ == "__main__":

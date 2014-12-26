@@ -12,7 +12,7 @@ convertScoreName, getScorePDF, saveScorePDF, createJsonFile, convertIndexToJson,
 convertJsonToDict, downloadAndSaveScore, updateJsonFile, getBoijeLetterIndices,\
 consolidateIndicesToDictionary, boijeCollectionInit, dictionaryInit, scoreDownloader,\
 getScorePath, loggingInit, getUserDesktop, renameBoijeFiles, getBoijeNumber,\
-getScoreNameWithBoijeNumber
+getScoreNameWithBoijeNumber, usage, getCommandLineArgs
 
 ##So we don't overwrite a users hard downloaded files
 DESTINATION_DIRECTORY = './'
@@ -530,8 +530,40 @@ class RenamerUtilityTests(DirectorySetupAndRemovalMixin, unittest.TestCase):
         read_json_file_dict = convertJsonToDict(json_file_path)
         self.assertTrue(read_json_file_dict.get(composer).get(score_1_name)[2])
         self.assertTrue(read_json_file_dict.get(composer).get(score_1_name)[2])
-        
 
+class CommandLineArgsTests(unittest.TestCase):
+        
+    def testUsageDisplay(self):
+        # test to make sure function exists and returns a value 0
+        output_of_usage_function = usage()
+        
+        self.assertEqual(0, output_of_usage_function)
+
+    def testGetArgs(self):
+        """ Need to get arguments by pretend passing in a list of args """
+
+        # First be able to set boije folder
+        command_line_prompt_args =  ["--set-directory=./boije_test_directory", 
+                                    "--rename", "--download"]
+
+        parse_command_line_args = getCommandLineArgs(command_line_prompt_args)
+
+        self.assertEqual(parse_command_line_args['directory'],
+                        "./boije_test_directory")
+        self.assertTrue(parse_command_line_args['rename'])
+        self.assertTrue(parse_command_line_args['download'])
+
+        command_line_prompt_args = ['-h', '-s' ,'./boije_test_directory',
+                                    '-r', 'd']
+        
+        parse_command_line_args = getCommandLineArgs(command_line_prompt_args) 
+
+        self.assertEqual(parse_command_line_args['directory'],
+                        "./boije_test_directory")
+        self.assertTrue(parse_command_line_args['rename'])
+        self.assertTrue(parse_command_line_args['download'])
+
+        
              
 if __name__ == '__main__':
     test_classes_to_run = [
@@ -544,6 +576,7 @@ if __name__ == '__main__':
                             #CreateReadIndexTests, 
                             #JSONFileTests,
                             RenamerUtilityTests,
+                            CommandLineArgsTests,
                             ]
     test_classes_to_run = test_classes_to_run
     loader = unittest.TestLoader()
